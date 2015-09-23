@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Pick's Theorem</title>
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                cursor: default;
+                overflow: hidden;
+            }
+            canvas {
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+            html, body, canvas {
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+    </head>
+    <body>
+        <canvas />
+        <script>
+            if (document.location.hash == "#map") {
+                document.body.style.background = "url('images/wellington.png') center center no-repeat";
+            }
+
+            function Theorem(canvas, interval) {
+                this.canvas = canvas;
+                this.interval = interval;
+
+                this.reset();
+                this.redraw();
+            }
+
+            Theorem.prototype.reset = function() {
+                this.closed = false;
+
+                this.points = {
+                    "check": [],
+                    "click": [],
+                    "boundary": [],
+                    "interior": [],
+                };
+
+                this.limits = {
+                    "x": {
+                        "min": 0,
+                        "max": Number.MAX_SAFE_INTEGER,
+                    },
+                    "y": {
+                        "min": 0,
+                        "max": Number.MAX_SAFE_INTEGER,
+                    }
+                };
+
+                this.redraw();
+            };
+
+            Theorem.prototype.click = function(event) {
+                if (this.closed) {
+                    return;
+                }
+
+                var x = this.round(event.clientX, this.interval);
+                var y = this.round(event.clientY, this.interval);
+
+                var found = false;
+
+                this.points.click.forEach(function(point) {
+                    if (x == point.x && y == point.y) {
+                        found = true;
+                    }
+                })
+
+                if (!found) {
+                    this.points.click.push({
+                        "x": x,
+                        "y": y,
+                    });
+                }
+
+                this.redraw();
+            };
+
+            Theorem.prototype.round = function(number) {
+                return Math.floor((number / this.interval) + .5) * this.interval;
+            };
+
+            Theorem.prototype.close = function(event) {
+                if (this.closed) {
+                    return;
+                }
+
+                event.stopPropagation();
+                event.preventDefault();
+
+                this.points.click.push(this.points.click[0]);
+
+                this.redraw();
+            };
+
+            Theorem.prototype.addEventListeners = function() {
+                this.bindings = [
+                    [window, "click", this.click.bind(this)],
+                    [window, "resize", this.redraw.bind(this)],
+                    [window, "keydown", this.space.bind(this)],
+                    [this.canvas, "contextmenu", this.close.bind(this)],
+                ];
+
+                this.bindings.forEach(function(binding) {
+                    binding[0].addEventListener(binding[1], binding[2], true);
+                });
+            };
+
+            Theorem.prototype.space = function(event) {
+                if (event.which == 32) {
+                    this.reset();
+                }
+            };
+
+            Theorem.prototype.removeEventListeners = function() {
+                this.bindings.forEach(function(binding) {
+                    binding[0].removeEventListener(binding[1], binding[2], true);
+                });
+
+                this.bindings = [];
+            };
+
+            Theorem.prototype.redraw = function() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                var rows = Math.ceil(window.innerHeight / this.interval);
+                var columns = Math.ceil(window.innerWidth / this.interval);
+
+                this.checkLimits();
+
+                var context = this.canvas.getContext("2d");
+                context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+                var shade = false;
+
+                this.points.check = [];
+
+                for (var i = 0; i < rows; i++) {
+                    for (var j = 0; j < columns; j++) {
+                        shade = !shade;
+
+                        if (shade) {
+                            context.fillStyle = "rgba(0, 0, 0, 0.15)";
+                        } else {
+                            context.fillStyle = "rgba(0, 0, 0, 0.1)";
+                        }
+
+                        var x = j * this.interval;
+                        var y = i * this.interval;
+
+                        context.fillRect(x, y, this.interval, this.interval);
+
+                        if (x >= this.limits.x.min && x <= this.limits.x.max && y >= this.limits.y.min && y <= this.limits.y.max) {
+                            this.points.check.push({
+                                "x": j * this.interval,
+                                "y": i * this.interval,
+                            });
+                        }
+                    }
+
+                    if (columns % 2 == 0) {
+                        shade = !shade;
+                    }
+                }
+
+                this.points.check.forEach(function(point) {
+                    var path = new Path2D();
+                    path.arc(point.x, point.y, 5, 0, Math.PI * 2);
+
+                    context.fillStyle = "rgba(255, 0, 0, 0.3)";
+                    context.fill(path);
+                });
+
+                var last = null;
+                var fill = new Path2D();
+
+                this.points.click.forEach(function(point) {
+                    if (last) {
+                        var path = new Path2D();
+                        path.moveTo(last.x, last.y);
+
+                        path.lineTo(point.x, point.y);
+
+                        context.lineCap = "square";
+                        context.strokeStyle = "rgba(0, 0, 0, 1)";
+                        context.stroke(path);
+
+                        fill.lineTo(point.x, point.y);
+                    } else {
+                        fill.moveTo(point.x, point.y)
+                    }
+
+                    last = point;
+                });
+
+                if (this.points.click.length > 1) {
+                    var first = this.points.click[0];
+                    var last = this.points.click[this.points.click.length - 1];
+
+                    if (first && last && first.x == last.x && first.y == last.y) {
+                        context.fillStyle = "rgba(0, 0, 0, 0.3)";
+                        context.fill(fill);
+
+                        this.closed = true;
+                    }
+                }
+
+                this.points.boundary = [];
+                this.points.interior = [];
+
+                this.points.check.forEach((function(point) {
+                    var points = [];
+
+                    for (var i = point.x - 1; i < point.x + 2; i++) {
+                        for (var j = point.y - 1; j < point.y + 2; j++) {
+                            points.push(context.getImageData(i, j, 1, 1).data);
+                        }
+                    }
+
+                    // for (var i = 0; i < points.length; i++) {
+                    //     console.log(
+                    //         "%c rgba(" + points[i][0] + ", " + points[i][1] + ", " + points[i][2] + ", " + points[i][3] + ") ",
+                    //         "background: rgba(" + points[i][0] + ", " + points[i][1] + ", " + points[i][2] + ", " + points[i][3] + "); color: #fff"
+                    //     );
+                    // }
+
+                    var boundary = false;
+
+                    for (var i = 0; i < points.length; i++) {
+                        if (points[i][0] <= 70 && points[i][3] >= 170) {
+                            this.points.boundary.push(point);
+                            boundary = true;
+                            break;
+                        }
+                    }
+
+                    if (!boundary) {
+                        for (var i = 0; i < points.length; i++) {
+                            if (!boundary && points[i][0] >= 90 && points[i][0] <= 110 && points[i][3] >= 140 && points[i][3] <= 160) {
+                                this.points.interior.push(point);
+                                break;
+                            }
+                        }
+                    }
+                }).bind(this));
+
+                this.points.boundary.forEach(function(point) {
+                    var path = new Path2D();
+                    path.arc(point.x, point.y, 5, 0, Math.PI * 2);
+
+                    context.fillStyle = "rgba(0, 0, 255, 1)";
+                    context.fill(path);
+                });
+
+                this.points.interior.forEach(function(point) {
+                    var path = new Path2D();
+                    path.arc(point.x, point.y, 5, 0, Math.PI * 2);
+
+                    context.fillStyle = "rgba(0, 255, 0, 1)";
+                    context.fill(path);
+                });
+
+                console.log("interior points:", this.points.interior.length);
+                console.log("boundary points:", this.points.boundary.length);
+                console.log("area:", this.points.interior.length + (this.points.boundary.length / 2) - 1);
+            }
+
+            Theorem.prototype.checkLimits = function() {
+                var limits = {
+                    "x": {
+                        "min": Number.MAX_SAFE_INTEGER,
+                        "max": 0,
+                    },
+                    "y": {
+                        "min": Number.MAX_SAFE_INTEGER,
+                        "max": 0,
+                    }
+                };
+
+                this.points.click.forEach(function(point) {
+                    limits.x.min = Math.min(limits.x.min, point.x);
+                    limits.x.max = Math.max(limits.x.max, point.x);
+                    limits.y.min = Math.min(limits.y.min, point.y);
+                    limits.y.max = Math.max(limits.y.max, point.y);
+                });
+
+                this.limits = limits;
+            };
+
+            var theorem = new Theorem(document.querySelector("canvas"), 72);
+            theorem.addEventListeners();
+        </script>
+    </body>
+</html>
