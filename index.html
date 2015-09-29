@@ -19,9 +19,50 @@
                 width: 100%;
                 height: 100%;
             }
+            #optimized, #interval {
+                z-index: 1;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 105px;
+                height: 16px;
+                font-size: 16px;
+                text-align: center;
+                padding: 10px;
+                cursor: pointer;
+            }
+            .optimized {
+                background-color: #3f3;
+            }
+            .not-optimized {
+                background-color: #fff;
+            }
+            * {
+               -moz-user-select: none;
+               -khtml-user-select: none;
+               -webkit-user-select: none;
+
+               /*
+                 Introduced in IE 10.
+                 See http://ie.microsoft.com/testdrive/HTML5/msUserSelect/
+               */
+               -ms-user-select: none;
+               user-select: none;
+            }
+            #interval {
+                z-index: 2;
+                top: 36px;
+                background-color: #fff;
+                border-top: 1px solid #666;
+            }
+            #interval_value {
+                width: 24px;
+            }
         </style>
     </head>
     <body>
+        <div id="optimized" class="not-optimized">Optimized: <span id="optimized_label">No</span></div>
+        <div id="interval">Grid Size: <input id="interval_value" type="text" value="72" /></div>
         <canvas />
         <script>
             if (document.location.hash == "#map") {
@@ -31,6 +72,10 @@
             function Theorem(canvas, interval) {
                 this.canvas = canvas;
                 this.interval = interval;
+                this.isOptimized = false;
+                this.optimized = document.querySelector("#optimized")
+                this.optimized_label = document.querySelector("#optimized_label");
+                this.intervalValue = document.querySelector("#interval_value");
 
                 this.reset();
                 this.redraw();
@@ -38,6 +83,11 @@
 
             Theorem.prototype.reset = function() {
                 this.closed = false;
+                this.isOptimized = false;
+
+                this.optimized.className = "not-optimized";
+                this.optimized_label.innerText = "No"
+
 
                 this.points = {
                     "check": [],
@@ -105,16 +155,50 @@
 
             Theorem.prototype.addEventListeners = function() {
                 this.bindings = [
-                    [window, "click", this.click.bind(this)],
+                    [this.canvas, "click", this.click.bind(this)],
                     [window, "resize", this.redraw.bind(this)],
                     [window, "keydown", this.space.bind(this)],
                     [this.canvas, "contextmenu", this.close.bind(this)],
+                    [this.optimized, "click", this.optimize.bind(this)],
+                    [this.intervalValue, "keydown", this.changeInterval.bind(this)],
                 ];
 
                 this.bindings.forEach(function(binding) {
                     binding[0].addEventListener(binding[1], binding[2], true);
                 });
             };
+
+            Theorem.prototype.changeInterval = function(event) {
+                if(event.which == 13) {
+                    var newInterval = parseInt(this.intervalValue.value);
+                    if(newInterval >= 5 && newInterval <= 150) {
+                        this.interval = newInterval;
+                        console.log(this.interval);
+                        this.reset();
+                    } else if(newInterval < 5) {
+                        this.intervalValue.value = 5;
+                        this.interval = 5;
+                    } else if(newInterval > 150) {
+                        this.intervalValue.value = 150;
+                        this.interval = 150;
+                    }
+                    this.redraw();
+                }
+            }
+
+            Theorem.prototype.optimize = function() {
+                this.isOptimized = !this.isOptimized;
+
+                if(this.isOptimized) {
+                    this.optimized.className = "optimized";
+                    this.optimized_label.innerText = "Yes"
+                } else {
+                    this.optimized.className = "not-optimized";
+                    this.optimized_label.innerText = "No"
+                }
+
+                this.redraw();
+            }
 
             Theorem.prototype.space = function(event) {
                 if (event.which == 32) {
@@ -130,7 +214,234 @@
                 this.bindings = [];
             };
 
+            Theorem.prototype.createBluePoint = function(context, point) {
+                    var path = new Path2D();
+                    path.arc(point.x, point.y, 5, 0, Math.PI * 2);
+
+                    context.fillStyle = "rgba(0, 0, 255, 1)";
+                    context.fill(path);
+            }
+
+            Theorem.prototype.createGreenPoint = function(context, point) {
+                var path = new Path2D();
+                path.arc(point.x, point.y, 5, 0, Math.PI * 2);
+
+                context.fillStyle = "rgba(0, 255, 0, 1)";
+                context.fill(path);
+            }
+
+            Theorem.prototype.findBoundaryPointsOnLine = function(context, point1, point2) {
+                var points = []
+
+                // The vertical case
+                if(point1.x == point2.x)
+                {
+                    var largerY = point1.y > point2.y ? point1.y : point2.y;
+                    var smallerY = point1.y < point2.y ? point1.y : point2.y;
+
+                    for(var i = smallerY+this.interval; i < largerY; i+=this.interval) {
+                        points.push({"x" : point1.x, "y": i});
+                    }
+                } else {
+                    var largerX = point1.x > point2.x ? point1.x : point2.x;
+                    var smallerX = point1.x < point2.x ? point1.x : point2.x;
+                    var slope = (point1.y  - point2.y)/(point1.x - point2.x);
+                    var yOffset = slope*point1.x*-1 + point1.y;
+
+                    console.log(smallerX+this.interval, largerX);
+                    for(var i = smallerX+this.interval; i < largerX; i+=this.interval) {
+                        var y = slope*i + yOffset;
+                        if(y % this.interval == 0) {
+                            points.push({"x" : i, "y": y});
+                        }
+                    }
+                }
+
+                points.forEach((function(point) {
+                    this.createBluePoint(context, point);
+                    this.points.boundary.push(point);
+                }).bind(this));
+            }
+
+            Theorem.prototype.isOnBoundary = function(point) {
+                var r = false;
+                this.points.boundary.forEach(function(p){
+                    if(p.x == point.x && p.y == point.y) {
+                        r =  true;
+                    }
+                });
+                
+                return r;
+            }
+
+            // This function ported from http://bbs.dartmouth.edu/~fangq/MATH/download/source/Determining%20if%20a%20point%20lies%20on%20the%20interior%20of%20a%20polygon.htm
+            // It was also modified by me slightly in order to accomodate the need
+            Theorem.prototype.insidePolygon = function(point) {
+                var counter = 0;
+                var i;
+                var xinters;
+                var p1, p2;
+                var polygon = this.points.click;
+
+                p1 = polygon[0];
+                for(i=1; i<=polygon.length; i++) {
+                    p2 = polygon[i % polygon.length];
+                    if(point.y > Math.min(p1.y, p2.y)) {
+                        if(point.y <= Math.max(p1.y, p2.y)) {
+                            if(point.x <= Math.max(p1.x, p2.x)) {
+                                if(p1.y != p2.y) {
+                                    xinters = (point.y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y) + p1.x;
+                                    if(p1.x == p2.x || point.x <= xinters) {
+                                        counter++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    p1 = p2;
+                }
+
+                // the isOnBoundary was added because the algorithm seemed to include some boundary points
+                if(counter % 2 == 0 || this.isOnBoundary(point)) {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+
+            Theorem.prototype.optimizedRedraw = function() {
+                var time = new Date().getTime();
+
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                var rows = Math.ceil(window.innerHeight / this.interval);
+                var columns = Math.ceil(window.innerWidth / this.interval);
+
+                this.checkLimits();
+
+                var context = this.canvas.getContext("2d");
+                context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+                var shade = false;
+
+                this.points.check = [];
+                this.points.boundary = [];
+                this.points.interior = [];
+
+                // Draw Grid
+                for (var i = 0; i < rows; i++) {
+                    for (var j = 0; j < columns; j++) {
+                        shade = !shade;
+
+                        if (shade) {
+                            context.fillStyle = "rgba(0, 0, 0, 0.15)";
+                        } else {
+                            context.fillStyle = "rgba(0, 0, 0, 0.1)";
+                        }
+
+                        var x = j * this.interval;
+                        var y = i * this.interval;
+
+                        context.fillRect(x, y, this.interval, this.interval);
+
+                        if (x >= this.limits.x.min && x <= this.limits.x.max && y >= this.limits.y.min && y <= this.limits.y.max) {
+                            this.points.check.push({
+                                "x": j * this.interval,
+                                "y": i * this.interval,
+                            });
+                        }
+                    }
+
+                    if (columns % 2 == 0) {
+                        shade = !shade;
+                    }
+                }
+
+                // Draw all check points
+                this.points.check.forEach(function(point) {
+                    var path = new Path2D();
+                    path.arc(point.x, point.y, 5, 0, Math.PI * 2);
+
+                    context.fillStyle = "rgba(255, 0, 0, 0.3)";
+                    context.fill(path);
+                });
+
+                var last = null;
+                var fill = new Path2D();
+
+                // Store new point on click (and add boundary points)
+                this.points.click.forEach((function(point) {
+                    if (last) {
+                        var path = new Path2D();
+                        path.moveTo(last.x, last.y);
+
+                        // Create Line
+                        path.lineTo(point.x, point.y);
+
+                        context.lineCap = "square";
+                        context.strokeStyle = "rgba(0, 0, 0, 1)";
+                        context.stroke(path);
+
+                        fill.lineTo(point.x, point.y);
+
+                        // Fill point and mark as boundary
+                        this.createBluePoint(context, point);
+                        this.points.boundary.push(point);
+
+                        // Find all boundary points between the two points
+                        this.findBoundaryPointsOnLine(context, point, last);
+
+                    } else {
+                        fill.moveTo(point.x, point.y)
+                        this.createBluePoint(context, point);
+                    }
+
+                    last = point;
+                }).bind(this));
+
+                if (this.points.click.length > 1) {
+                    var first = this.points.click[0];
+                    var last = this.points.click[this.points.click.length - 1];
+
+                    if (first && last && first.x == last.x && first.y == last.y) {
+                        context.fillStyle = "rgba(0, 0, 0, 0.3)";
+                        context.fill(fill);
+
+                        this.closed = true;
+                    }
+                }
+
+                if(this.closed) {
+                    this.points.check.forEach((function(point) {
+
+                        if(this.insidePolygon(point))
+                        {
+                            if(this.points.boundary.indexOf(point) !== false) {
+                                this.points.interior.push(point);
+                                this.createGreenPoint(context, point);
+                            }
+                        }
+
+                    }).bind(this));
+                }
+
+                time = new Date().getTime() - time;
+
+                console.log("interior points:", this.points.interior.length);
+                console.log("boundary points:", this.points.boundary.length);
+                console.log("area:", this.points.interior.length + (this.points.boundary.length / 2) - 1);
+                console.log("speed:", time);
+            }
+
             Theorem.prototype.redraw = function() {
+                if(this.isOptimized) {
+                    this.optimizedRedraw();
+                    return false;
+                }
+
+                var time = new Date().getTime();
+
                 this.canvas.width = window.innerWidth;
                 this.canvas.height = window.innerHeight;
 
@@ -271,9 +582,12 @@
                     context.fill(path);
                 });
 
+                time = new Date().getTime() - time;
+
                 console.log("interior points:", this.points.interior.length);
                 console.log("boundary points:", this.points.boundary.length);
                 console.log("area:", this.points.interior.length + (this.points.boundary.length / 2) - 1);
+                console.log("speed:", time);
             }
 
             Theorem.prototype.checkLimits = function() {
