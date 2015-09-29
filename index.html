@@ -170,11 +170,11 @@
 
             Theorem.prototype.changeInterval = function(event) {
                 if(event.which == 13) {
-                    var newInterval = this.intervalValue.value;
+                    var newInterval = parseInt(this.intervalValue.value);
                     if(newInterval >= 5 && newInterval <= 150) {
                         this.interval = newInterval;
+                        console.log(this.interval);
                         this.reset();
-                        this.redraw();
                     } else if(newInterval < 5) {
                         this.intervalValue.value = 5;
                         this.interval = 5;
@@ -182,6 +182,7 @@
                         this.intervalValue.value = 150;
                         this.interval = 150;
                     }
+                    this.redraw();
                 }
             }
 
@@ -247,6 +248,7 @@
                     var slope = (point1.y  - point2.y)/(point1.x - point2.x);
                     var yOffset = slope*point1.x*-1 + point1.y;
 
+                    console.log(smallerX+this.interval, largerX);
                     for(var i = smallerX+this.interval; i < largerX; i+=this.interval) {
                         var y = slope*i + yOffset;
                         if(y % this.interval == 0) {
