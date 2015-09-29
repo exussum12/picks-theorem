@@ -175,6 +175,12 @@
                         this.interval = newInterval;
                         this.reset();
                         this.redraw();
+                    } else if(newInterval < 5) {
+                        this.intervalValue.value = 5;
+                        this.interval = 5;
+                    } else if(newInterval > 150) {
+                        this.intervalValue.value = 150;
+                        this.interval = 150;
                     }
                 }
             }
