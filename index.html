@@ -159,6 +159,7 @@
                     [window, "resize", this.redraw.bind(this)],
                     [window, "keydown", this.space.bind(this)],
                     [this.canvas, "contextmenu", this.close.bind(this)],
+                    [this.canvas, "dblclick", this.close.bind(this)],
                     [this.optimized, "click", this.optimize.bind(this)],
                     [this.intervalValue, "keydown", this.changeInterval.bind(this)],
                 ];
@@ -201,7 +202,7 @@
             }
 
             Theorem.prototype.space = function(event) {
-                if (event.which == 32) {
+                if (event.which == 32 || event.which == 27) {
                     this.reset();
                 }
             };
@@ -248,7 +249,6 @@
                     var slope = (point1.y  - point2.y)/(point1.x - point2.x);
                     var yOffset = slope*point1.x*-1 + point1.y;
 
-                    console.log(smallerX+this.interval, largerX);
                     for(var i = smallerX+this.interval; i < largerX; i+=this.interval) {
                         var y = slope*i + yOffset;
                         if(y % this.interval == 0) {
@@ -414,7 +414,6 @@
 
                 if(this.closed) {
                     this.points.check.forEach((function(point) {
-
                         if(this.insidePolygon(point))
                         {
                             if(this.points.boundary.indexOf(point) !== false) {
@@ -427,6 +426,10 @@
                 }
 
                 time = new Date().getTime() - time;
+
+                if ( !this.closed || this.checkIfLine() ) {
+                    return console.log("Incomplete polygon / line drawn");
+                }
 
                 console.log("interior points:", this.points.interior.length);
                 console.log("boundary points:", this.points.boundary.length);
@@ -539,13 +542,6 @@
                         }
                     }
 
-                    // for (var i = 0; i < points.length; i++) {
-                    //     console.log(
-                    //         "%c rgba(" + points[i][0] + ", " + points[i][1] + ", " + points[i][2] + ", " + points[i][3] + ") ",
-                    //         "background: rgba(" + points[i][0] + ", " + points[i][1] + ", " + points[i][2] + ", " + points[i][3] + "); color: #fff"
-                    //     );
-                    // }
-
                     var boundary = false;
 
                     for (var i = 0; i < points.length; i++) {
@@ -584,10 +580,65 @@
 
                 time = new Date().getTime() - time;
 
+                if ( !this.closed || this.checkIfLine() ) {
+                    return console.log("Incomplete polygon / line drawn");
+                }
+
                 console.log("interior points:", this.points.interior.length);
                 console.log("boundary points:", this.points.boundary.length);
                 console.log("area:", this.points.interior.length + (this.points.boundary.length / 2) - 1);
                 console.log("speed:", time);
+            }
+
+
+            Theorem.prototype.checkIfLine = function() {
+                var tmpPoints = this.points.click;
+                var length = tmpPoints.length;
+
+                if (length <= 2 ){
+                    return true;
+                }
+
+                //sort the points
+                tmpPoints.sort(this.sortPoints);
+
+                //check if the points are in order
+                var slope = null;
+                var tmpSlope = null;
+                for ( var i = 1 ; i < length; i++) {
+                    if (
+                        tmpPoints[i-1].x == tmpPoints[i].x &&
+                        tmpPoints[i-1].y == tmpPoints[i].y
+                    ) {
+                        //they are the same point, Just skip it
+                        continue;
+                    }
+                    tmpSlope =
+                        (tmpPoints[i].y - tmpPoints[i-1].y) /
+                        (tmpPoints[i].x - tmpPoints[i-1].x)
+                    ;
+
+                    if (slope === null) {
+                       //set the slope
+                       slope = tmpSlope;
+                       continue;
+                    }
+
+                    if (slope != tmpSlope){
+                       return false;
+                    }
+                }
+                return true;
+            }
+
+            Theorem.prototype.sortPoints = function( a, b ) {
+                if (a.x < b.x) return 1;
+                if (a.x > b.x) return -1;
+                if (a.y < b.y) return 1;
+                if (a.y > b.y) return -1;
+
+                //they are equal
+                return 0;
             }
 
             Theorem.prototype.checkLimits = function() {
